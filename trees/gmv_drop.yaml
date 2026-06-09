@@ -1,34 +1,44 @@
-# Frozen hypothesis tree (GMV drop). DATA, not code.
-# In production this is authored & versioned in an external UI.
-id: gmv
-label: GMV
-measure: gmv
-relation: root
-segment_dims: [country]          # axis B: where did it move
-note: "GMV = orders x AOV. Top-down decomposition."
-children:
-  - id: orders
-    label: Orders
-    measure: orders
-    relation: multiplicative
-    segment_dims: [country]
-    note: "Demand / acquisition / retention side."
-  - id: aov
-    label: AOV
-    measure: aov
-    relation: multiplicative
-    segment_dims: [country]
-    note: "Basket size. Split rate vs mix below."
-    children:
-      - id: aov_rate
-        label: "AOV - rate"
-        measure: aov
-        relation: rate
-        segment_dims: [order_type]
-        note: "Per-segment basket changed (pricing / upsell)."
-      - id: aov_mix
-        label: "AOV - mix"
-        measure: aov
-        relation: mix
-        segment_dims: [order_type]
-        note: "Order mix shifted toward cheaper segments (promo, market shift)."
+# Frozen pack (GMV drop). DATA, not code.
+# A pack = a measure registry + a hypothesis tree. load_pack() parses this into
+# the same objects inferah_engine.tree.GMV_TREE / GMV_MEASURES hold in Python; a
+# test asserts the two don't drift apart. In production this is authored &
+# versioned in an external UI.
+
+measures:
+  gmv:    {kind: sum, column: gmv_usd}   # extensive: SUM(gmv_usd)
+  orders: {kind: count}                  # extensive: COUNT(*)
+  aov:    {kind: ratio, numerator: gmv, denominator: orders}  # intensive: rate
+
+tree:
+  id: gmv
+  label: GMV
+  measure: gmv
+  relation: root
+  segment_dims: [country]          # axis B: where did it move
+  note: "GMV = orders x AOV. Top-down decomposition."
+  children:
+    - id: orders
+      label: Orders
+      measure: orders
+      relation: multiplicative
+      segment_dims: [country]
+      note: "Demand / acquisition / retention side."
+    - id: aov
+      label: AOV
+      measure: aov
+      relation: multiplicative
+      segment_dims: [country]
+      note: "Basket size. Split rate vs mix below."
+      children:
+        - id: aov_rate
+          label: "AOV - rate"
+          measure: aov
+          relation: rate
+          segment_dims: [order_type]
+          note: "Per-segment basket actually changed (pricing / upsell)."
+        - id: aov_mix
+          label: "AOV - mix"
+          measure: aov
+          relation: mix
+          segment_dims: [order_type]
+          note: "Order mix shifted toward cheaper segments (promo, market shift)."

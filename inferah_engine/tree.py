@@ -1,25 +1,36 @@
 """
 Tree = the frozen 'algorithm' the engine follows. In production this is
-authored in an external UI and pinned/versioned. Here it's a plain dict so you
+authored in an external UI and pinned/versioned. Here it's plain data so you
 can read and edit it. Nodes are DATA, not code.
+
+A pack is a (tree, measures) pair: the tree names measures, the registry says
+how to compute them. The Python constants below are the same content as
+trees/gmv_drop.yaml — a test asserts they don't drift apart.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
+
+from .measures import Measure
 
 
 @dataclass
 class Node:
     id: str
     label: str
-    measure: str                      # which frozen measure: gmv / orders / aov
+    measure: str                      # a name in the pack's measure registry
     relation: str = "root"            # root | multiplicative | rate | mix
     children: list = field(default_factory=list)
-    segment_dims: list = field(default_factory=list)   # axis-B dims to test, e.g. ["country","city"]
-    threshold_pct: float = 1.0        # don't recurse below this share of the parent change
+    segment_dims: list = field(default_factory=list)   # axis-B dims to test, e.g. ["country"]
     note: str = ""                    # human hint, read by the narrator only
 
 
-# ---- example: GMV drop investigation (food-delivery pack) ----
+# ---- example pack: GMV drop investigation (food-delivery flavour) ----
+GMV_MEASURES = {
+    "gmv": Measure("gmv", "sum", column="gmv_usd"),
+    "orders": Measure("orders", "count"),
+    "aov": Measure("aov", "ratio", numerator="gmv", denominator="orders"),
+}
+
 GMV_TREE = Node(
     id="gmv",
     label="GMV",

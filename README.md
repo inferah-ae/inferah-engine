@@ -10,9 +10,10 @@ when it doesn't.
 
 Point an LLM at a warehouse and ask "why did GMV drop 12%?" and you get a plausible,
 confident story — and a *different* story next run, none of it reproducible or auditable.
-On real analytics questions a raw LLM lands around **51%** accuracy: good enough to sound
-right, not good enough to trust. The win here isn't a smarter model — it's **constraint**:
-pin the math, pin the tree, and only let a model speak about numbers it did not compute.
+Text-to-SQL / analytics benchmarks (e.g. BIRD, Spider 2.0) still put even strong models
+well short of the accuracy you'd trust for a decision: good enough to sound right, not good
+enough to act on. The win here isn't a smarter model — it's **constraint**: pin the math,
+pin the tree, and only let a model speak about numbers it did not compute.
 
 ## How it works
 
@@ -51,14 +52,15 @@ Think of it as a **reconciled variance investigator**, not a magic root-cause or
 ## Quickstart
 
 ```bash
-pip install -r requirements.txt   # pandas + numpy are enough for the demo
+pip install -e .                  # pandas + numpy + PyYAML; add ".[postgres]" for the DB source
+python -m inferah_engine.demo     # runs all three scenarios below
 ```
 
 ```python
-from data.synthetic import make_orders
-from inferah_engine import SyntheticSource, GMV_TREE, investigate, render, narrate
+from inferah_engine import SyntheticSource, GMV_TREE, GMV_MEASURES, investigate, render, narrate
+from inferah_engine.synthetic import make_orders
 
-src = SyntheticSource(make_orders())          # base-view filters applied inside
+src = SyntheticSource(make_orders(), GMV_MEASURES)   # base-view filters applied inside
 res = investigate(src, GMV_TREE, p0="0", p1="1")
 print(render(res))
 print(narrate(res))
@@ -69,37 +71,63 @@ Expected output:
 ```
 GMV change: -42,400 (-11.2%)
 ----------------------------------------------------------------
-[1] WHERE  | all · by country   reconcile:OK
-        Westland            -42,400 <-- winner
-        Eastland                  0
-        Northland                 0
-[2] FACTOR | all ∩ country=Westland · orders x AOV   reconcile:OK
-        aov                 -47,576 <-- winner
-        orders                5,176
-[3] RATE/MIX | all ∩ country=Westland · rate vs mix by order_type   reconcile:OK
-        aov_mix                  -9 <-- winner
-        aov_rate                  1
+[1] WHERE  | all · by country   [Δgmv]   reconcile:OK
+        Westland         -42,400.00 <-- winner
+        Northland              0.00
+        Eastland               0.00
+[2] FACTOR | all ∩ country=Westland · Orders x AOV   [Δgmv]   reconcile:OK
+        aov              -47,575.94 <-- winner
+        orders             5,175.94
+[3] RATE/MIX | all ∩ country=Westland · rate vs mix by order_type   [Δaov]   reconcile:OK
+        aov_mix               -9.23 <-- winner
+        aov_rate               1.42
 ----------------------------------------------------------------
-LEAF: mix shift toward cheaper segments
+LEAF: Order mix shifted toward cheaper segments (promo, market shift).
 CONFIDENCE: HIGH
 ```
 
-Read it as: **GMV −11.2% → concentrated in Westland → driven by AOV → a mix shift toward
-cheaper promo orders**, every step reconciled, confidence high. Or open
+The `[Δ…]` tag names the measure each step is decomposing, so the units are explicit:
+steps 1–2 are in **GMV dollars**, step 3 is in **AOV dollars** (the rate/mix split is on the
+average, not the total). Read it as: **GMV −11.2% → concentrated in Westland → driven by AOV
+→ a mix shift toward cheaper promo orders**, every step reconciled, confidence high. Or open
 [`notebooks/demo.ipynb`](notebooks/demo.ipynb) for the annotated walkthrough.
+
+### It refuses to guess
+
+When the real driver is a dimension the tree doesn't model, the segment split can't add up to
+the parent change — and the engine **abstains** rather than blaming the biggest visible slice:
+
+```python
+from inferah_engine.synthetic import make_orders_unmapped
+res = investigate(SyntheticSource(make_orders_unmapped(), GMV_MEASURES), GMV_TREE)
+print(narrate(res))
+# GMV moved -15.6%, but the tree can't reconcile it — splitting by country leaves 100% of
+# the -84,000 move unexplained — a driver this tree does not model … Refusing to guess.
+```
 
 ## Generic core, swappable packs
 
 The engine is **business-agnostic** — it knows LMDI, segment splits, rate/mix, and
-reconciliation, and nothing else. All domain knowledge lives in the **hypothesis-tree
-packs** you feed it (`trees/*.yaml`):
+reconciliation, and nothing else. There are **no measure names baked into the engine**: it
+decides what to do at each node purely from the node's `relation` and the *kind* of its
+measure (`sum` / `count` / `ratio`) in the pack's measure registry. All domain knowledge
+lives in the **packs** you feed it — a pack is a `measures:` registry plus a `tree:`, loaded
+from YAML:
+
+```python
+from inferah_engine import load_pack, SyntheticSource, investigate
+pack = load_pack("trees/acquisition.yaml")           # a different metric, the same walk
+res = investigate(SyntheticSource(df, pack.measures), pack.tree)
+```
 
 - [`trees/gmv_drop.yaml`](trees/gmv_drop.yaml) — the food-delivery GMV example
   (`GMV = orders × AOV`, AOV split rate vs mix).
 - [`trees/acquisition.yaml`](trees/acquisition.yaml) — a second domain
   (`subscriptions = paywall_visits × conversion`, conversion split rate vs mix).
 
-The food-delivery example is exactly that — **an included example, not the product.**
+Both packs run through the identical engine; a test asserts the YAML parses to the same
+objects as the Python constants in `tree.py` so they can't drift. The food-delivery example
+is exactly that — **an included example, not the product.**
 
 ## Built on
 
@@ -112,15 +140,20 @@ and [ruptures](https://github.com/deepcharles/ruptures). Maturity, not reinventi
 
 **Real, today:**
 
-- the deterministic engine — LMDI factor split, additive segment split, rate/mix
-- the reconciliation gate + confidence scoring
-- the synthetic, zero-setup demo
+- the generic deterministic engine — n-factor LMDI split, additive segment split, rate/mix —
+  driven entirely off the tree's `relation` + measure-kind, with **zero metric names hardcoded**
+- the reconciliation gate + confidence scoring, and an **honest abstain** when a split can't
+  account for the parent change
+- a real YAML pack loader (`load_pack`) — two packs (`gmv_drop`, `acquisition`) run through the
+  same engine
+- property tests + CI (`pytest`, GitHub Actions) and a zero-setup demo
+  (`python -m inferah_engine.demo`)
 - a read-only Postgres source (same interface, swap-in — see notebook §3)
 
 **Roadmap (not here yet):**
 
 - LLM-assisted tree auto-construction from a plain-English question
-- beam search over top-k branches (compound causes)
+- beam search over top-k branches (compound causes; today the walk is greedy)
 - feedback-driven branch priors (changes search *order*, never the math)
 - more tree packs (fail-rate, CSAT, supply)
 

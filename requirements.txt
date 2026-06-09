@@ -1,6 +1,8 @@
+# Core (engine + YAML packs + synthetic demo). `pip install -e .` reads pyproject.toml;
+# this file is here for the plain `pip install -r requirements.txt` path.
 pandas>=2.0
 numpy>=1.24
+PyYAML>=6.0
 # only needed for the PostgresSource (connecting to your own DB):
 SQLAlchemy>=2.0
 psycopg2-binary>=2.9
-PyYAML>=6.0

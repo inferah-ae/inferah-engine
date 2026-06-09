@@ -1,38 +1,46 @@
-# Frozen hypothesis tree (acquisition / subscriptions). DATA, not code.
-# Generic example — no business-specific names. In production this is
-# authored & versioned in an external UI.
+# Frozen pack (acquisition / subscriptions). DATA, not code.
+# Generic example — no business-specific names. Demonstrates the engine on a
+# DIFFERENT metric with the SAME walk: a ratio (conversion) that can fall either
+# because conversion itself got worse (rate) or because the traffic MIX shifted
+# (Simpson). In production this is authored & versioned in an external UI.
 #
 #   subscriptions = paywall_visits x paywall_conversion
-#   conversion is a RATE -> split rate vs mix (Simpson) across traffic source
-id: subscriptions
-label: Subscriptions (acquisition)
-measure: subscriptions
-relation: root
-segment_dims: [mkt_source, country, payment_method, offer]
-note: "subscriptions = paywall_visits x paywall_conversion."
-children:
-  - id: paywall_visits
-    label: Paywall visits
-    measure: paywall_visits
-    relation: multiplicative
-    segment_dims: [mkt_source, country]
-    note: "Traffic reaching the paywall. A drop points at marketing / paid spend / organic."
-  - id: paywall_conversion
-    label: Paywall conversion
-    measure: paywall_conversion
-    relation: multiplicative
-    segment_dims: [offer, mkt_source]
-    note: "Paywall conversion. This is a RATE - it can fall because the traffic MIX shifted, not because conversion itself got worse."
-    children:
-      - id: conv_rate
-        label: "Conversion - rate"
-        measure: paywall_conversion
-        relation: rate
-        segment_dims: [mkt_source]
-        note: "Conversion actually fell within sources (offer / price / paywall got worse)."
-      - id: conv_mix
-        label: "Conversion - mix"
-        measure: paywall_conversion
-        relation: mix
-        segment_dims: [mkt_source]
-        note: "Low-converting traffic grew as a share - the average fell from the mix shift (Simpson)."
+
+measures:
+  paywall_visits:      {kind: count}                         # extensive: COUNT(*)
+  subscriptions:       {kind: sum, column: converted}        # extensive: SUM(converted)
+  paywall_conversion:  {kind: ratio, numerator: subscriptions, denominator: paywall_visits}
+
+tree:
+  id: subscriptions
+  label: Subscriptions (acquisition)
+  measure: subscriptions
+  relation: root
+  segment_dims: [mkt_source]
+  note: "subscriptions = paywall_visits x paywall_conversion."
+  children:
+    - id: paywall_visits
+      label: Paywall visits
+      measure: paywall_visits
+      relation: multiplicative
+      segment_dims: [mkt_source]
+      note: "Traffic reaching the paywall. A drop points at marketing / paid spend / organic."
+    - id: paywall_conversion
+      label: Paywall conversion
+      measure: paywall_conversion
+      relation: multiplicative
+      segment_dims: [mkt_source]
+      note: "Paywall conversion. A RATE - it can fall because the traffic MIX shifted, not because conversion itself got worse."
+      children:
+        - id: conv_rate
+          label: "Conversion - rate"
+          measure: paywall_conversion
+          relation: rate
+          segment_dims: [mkt_source]
+          note: "Conversion actually fell within sources (offer / price / paywall got worse)."
+        - id: conv_mix
+          label: "Conversion - mix"
+          measure: paywall_conversion
+          relation: mix
+          segment_dims: [mkt_source]
+          note: "Low-converting traffic grew as a share - the average fell from the mix shift (Simpson)."

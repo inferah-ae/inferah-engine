@@ -18,18 +18,22 @@ def log_mean(a: float, b: float) -> float:
     return (a - b) / (math.log(a) - math.log(b))
 
 
-def lmdi_two_factor(m0, m1, a0, a1, b0, b1):
+def lmdi_factors(m0, m1, factors: dict):
     """
-    Decompose a multiplicative metric  M = A * B  into the contribution of
-    each factor to ΔM = M1 - M0, using the LMDI index. Exact: the two
-    contributions sum to ΔM with zero residual.
+    Decompose a multiplicative metric  M = Π_k F_k  into each factor's
+    contribution to ΔM = M1 - M0, using the LMDI index. Exact for any number
+    of factors: the contributions sum to ΔM with zero residual (when every
+    factor is strictly positive in both periods).
+
+        factors: {factor_name: (f0, f1)}   value of each factor per period
 
     Returns dict {factor_name: contribution_to_delta}.
     """
     L = log_mean(m1, m0)
-    da = L * math.log(a1 / a0) if a0 > 0 and a1 > 0 else 0.0
-    db = L * math.log(b1 / b0) if b0 > 0 and b1 > 0 else 0.0
-    return {"A": da, "B": db}
+    out = {}
+    for name, (f0, f1) in factors.items():
+        out[name] = L * math.log(f1 / f0) if f0 > 0 and f1 > 0 else 0.0
+    return out
 
 
 def segment_additive(seg0: dict, seg1: dict):
