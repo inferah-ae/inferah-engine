@@ -1,0 +1,29 @@
+# --- secrets / credentials (never commit) ---
+.env
+.env.*
+*.local.*
+secrets*
+*.pem
+*.key
+
+# --- real / non-synthetic data (only the generated synthetic demo is allowed) ---
+trees/*real*
+data/*.csv
+data/*.parquet
+*.duckdb
+*.sqlite
+*.sqlite3
+
+# --- python / jupyter caches ---
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# --- editor / OS ---
+.DS_Store
+.idea/
+.vscode/

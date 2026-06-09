@@ -1,0 +1,34 @@
+# Frozen hypothesis tree (GMV drop). DATA, not code.
+# In production this is authored & versioned in an external UI.
+id: gmv
+label: GMV
+measure: gmv
+relation: root
+segment_dims: [country]          # axis B: where did it move
+note: "GMV = orders x AOV. Top-down decomposition."
+children:
+  - id: orders
+    label: Orders
+    measure: orders
+    relation: multiplicative
+    segment_dims: [country]
+    note: "Demand / acquisition / retention side."
+  - id: aov
+    label: AOV
+    measure: aov
+    relation: multiplicative
+    segment_dims: [country]
+    note: "Basket size. Split rate vs mix below."
+    children:
+      - id: aov_rate
+        label: "AOV - rate"
+        measure: aov
+        relation: rate
+        segment_dims: [order_type]
+        note: "Per-segment basket changed (pricing / upsell)."
+      - id: aov_mix
+        label: "AOV - mix"
+        measure: aov
+        relation: mix
+        segment_dims: [order_type]
+        note: "Order mix shifted toward cheaper segments (promo, market shift)."
