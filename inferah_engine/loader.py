@@ -36,6 +36,7 @@ def _node(d: dict) -> Node:
         measure=d["measure"],
         relation=d.get("relation", "root"),
         segment_dims=list(d.get("segment_dims", [])),
+        sign=int(d.get("sign", 1)),
         note=d.get("note", ""),
         children=[_node(c) for c in d.get("children", [])],
     )

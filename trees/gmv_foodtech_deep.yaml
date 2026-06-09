@@ -1,0 +1,321 @@
+# Deep food-delivery GMV pack. DATA, not code — the frozen *identity* tree.
+#
+# Master identity (every node is algebra, never a "driver" or a correlation):
+#
+#   GMV = MAU × OrderConv × Frequency × AOV
+#     MAU      = New + Resurrected + Retained            (additive, user counts)
+#       New        = Installs × FirstOrderConv
+#       Retained   = PrevActives × RetentionRate
+#     OrderConv, Frequency                                (ratios → rate/mix)
+#     AOV      = Food + DeliveryFee + ServiceFee + SmallOrderFee − Discount   (signed additive, per order)
+#       Food        = ItemsPerOrder × PricePerItem
+#       DeliveryFee = PayingShare × AvgFee
+#       Discount    = PromoPenetration × AvgDiscount
+#
+# Each node reconciles into its parent exactly:
+#   • multiplicative children  → LMDI factor split (product == parent)
+#   • summand children         → signed additive split (Σ ±child == parent)
+#   • a ratio node             → rate vs mix split (Simpson-proof)
+#
+# NOTE on grain: the bundled synthetic generator is order-grain (1 row = 1 order),
+# so the user-funnel ratios above the order grain (OrderConv, FirstOrderConv,
+# RetentionRate) are ~1.0 / flat in that data — every active user orders, every
+# install converts. The funnel STRUCTURE is real and reconciles; the *scenario*
+# exercises the order-grain AOV subtree, where the interesting mechanics live.
+
+measures:
+  # --- extensive (additive over a dimension) ---
+  gmv:             {kind: sum, column: gmv_usd}
+  food_total:      {kind: sum, column: food_usd}
+  delivery_total:  {kind: sum, column: delivery_fee_usd}
+  service_total:   {kind: sum, column: service_fee_usd}
+  small_total:     {kind: sum, column: small_order_fee_usd}
+  discount_total:  {kind: sum, column: discount_usd}
+  items_total:     {kind: sum, column: items}
+  paying_orders:   {kind: sum, column: is_paying_delivery}
+  promo_orders:    {kind: sum, column: is_promo}
+  orders:          {kind: count}
+
+  # --- distinct user counts (intensive: never dim-split) ---
+  mau:             {kind: count, distinct: true, column: user_id}
+  ordering_users:  {kind: count, distinct: true, column: user_id}
+  new:             {kind: count, distinct: true, column: new_user_id}
+  resurrected:     {kind: count, distinct: true, column: resurrected_user_id}
+  retained:        {kind: count, distinct: true, column: retained_user_id}
+  installs:        {kind: count, distinct: true, column: install_user_id}
+  prev_actives:    {kind: count, distinct: true, column: prev_active_user_id}
+
+  # --- ratios (intensive: rate/mix, never summed) ---
+  aov:                {kind: ratio, numerator: gmv,            denominator: orders}
+  order_conv:         {kind: ratio, numerator: ordering_users, denominator: mau}
+  frequency:          {kind: ratio, numerator: orders,         denominator: ordering_users}
+  first_order_conv:   {kind: ratio, numerator: new,            denominator: installs}
+  retention_rate:     {kind: ratio, numerator: retained,       denominator: prev_actives}
+  food:               {kind: ratio, numerator: food_total,     denominator: orders}
+  delivery_fee:       {kind: ratio, numerator: delivery_total, denominator: orders}
+  service_fee:        {kind: ratio, numerator: service_total,  denominator: orders}
+  small_order_fee:    {kind: ratio, numerator: small_total,    denominator: orders}
+  discount:           {kind: ratio, numerator: discount_total, denominator: orders}
+  items_per_order:    {kind: ratio, numerator: items_total,    denominator: orders}
+  price_per_item:     {kind: ratio, numerator: food_total,     denominator: items_total}
+  paying_share:       {kind: ratio, numerator: paying_orders,  denominator: orders}
+  avg_fee:            {kind: ratio, numerator: delivery_total, denominator: paying_orders}
+  promo_penetration:  {kind: ratio, numerator: promo_orders,   denominator: orders}
+  avg_discount:       {kind: ratio, numerator: discount_total, denominator: promo_orders}
+
+tree:
+  id: gmv
+  label: GMV
+  measure: gmv
+  relation: root
+  segment_dims: [city, channel]      # WHERE (the rate/mix dims — cuisine, order_type — live below, not here)
+  note: "GMV = MAU × OrderConv × Frequency × AOV. Localize WHERE, then which lever."
+  children:
+    - id: mau
+      label: MAU
+      measure: mau
+      relation: multiplicative
+      note: "Monthly active users. Composed of new + resurrected + retained."
+      children:
+        - id: new
+          label: New
+          measure: new
+          relation: summand
+          note: "First-time active users this period. New = Installs × FirstOrderConv."
+          children:
+            - id: installs
+              label: Installs
+              measure: installs
+              relation: multiplicative
+              note: "App installs in the acquisition funnel (top of funnel)."
+            - id: first_order_conv
+              label: First-order conversion
+              measure: first_order_conv
+              relation: multiplicative
+              note: "Share of installs that placed a first order. A RATE."
+              children:
+                - id: foc_rate
+                  label: "First-order conv · rate"
+                  measure: first_order_conv
+                  relation: rate
+                  segment_dims: [signup_cohort]
+                  note: "Within-cohort first-order conversion moved."
+                - id: foc_mix
+                  label: "First-order conv · mix"
+                  measure: first_order_conv
+                  relation: mix
+                  segment_dims: [signup_cohort]
+                  note: "Cohort mix shifted toward lower-converting signups (Simpson)."
+        - id: resurrected
+          label: Resurrected
+          measure: resurrected
+          relation: summand
+          note: "Dormant users reactivated this period."
+        - id: retained
+          label: Retained
+          measure: retained
+          relation: summand
+          note: "Previously-active users still active. Retained = PrevActives × RetentionRate."
+          children:
+            - id: prev_actives
+              label: Prev actives
+              measure: prev_actives
+              relation: multiplicative
+              note: "Base of previously-active users eligible to retain."
+            - id: retention_rate
+              label: Retention rate
+              measure: retention_rate
+              relation: multiplicative
+              note: "Share of prev-actives retained. A RATE."
+              children:
+                - id: ret_rate
+                  label: "Retention · rate"
+                  measure: retention_rate
+                  relation: rate
+                  segment_dims: [signup_cohort]
+                  note: "Within-cohort retention moved."
+                - id: ret_mix
+                  label: "Retention · mix"
+                  measure: retention_rate
+                  relation: mix
+                  segment_dims: [signup_cohort]
+                  note: "Cohort mix shifted toward lower-retaining signups (Simpson)."
+    - id: order_conv
+      label: Order conversion
+      measure: order_conv
+      relation: multiplicative
+      note: "Active users who placed an order / MAU. A RATE."
+      children:
+        - id: oc_rate
+          label: "Order conv · rate"
+          measure: order_conv
+          relation: rate
+          segment_dims: [channel]
+          note: "Within-channel order conversion moved."
+        - id: oc_mix
+          label: "Order conv · mix"
+          measure: order_conv
+          relation: mix
+          segment_dims: [channel]
+          note: "Channel mix shifted toward lower-converting channels (Simpson)."
+    - id: frequency
+      label: Frequency
+      measure: frequency
+      relation: multiplicative
+      note: "Orders per ordering user. A RATE."
+      children:
+        - id: freq_rate
+          label: "Frequency · rate"
+          measure: frequency
+          relation: rate
+          segment_dims: [city]
+          note: "Within-city order frequency moved."
+        - id: freq_mix
+          label: "Frequency · mix"
+          measure: frequency
+          relation: mix
+          segment_dims: [city]
+          note: "City mix shifted toward lower-frequency cities (Simpson)."
+    - id: aov
+      label: AOV
+      measure: aov
+      relation: multiplicative
+      note: "Average order value. AOV = Food + DeliveryFee + ServiceFee + SmallOrderFee − Discount."
+      children:
+        - id: food
+          label: Food
+          measure: food
+          relation: summand
+          note: "Food revenue per order. Food = ItemsPerOrder × PricePerItem."
+          children:
+            - id: items_per_order
+              label: Items / order
+              measure: items_per_order
+              relation: multiplicative
+              note: "Basket size in items. A RATE."
+              children:
+                - id: ipo_rate
+                  label: "Items/order · rate"
+                  measure: items_per_order
+                  relation: rate
+                  segment_dims: [cuisine]
+                  note: "Within-cuisine basket size moved."
+                - id: ipo_mix
+                  label: "Items/order · mix"
+                  measure: items_per_order
+                  relation: mix
+                  segment_dims: [cuisine]
+                  note: "Cuisine mix shifted toward smaller-basket cuisines (Simpson)."
+            - id: price_per_item
+              label: Price / item
+              measure: price_per_item
+              relation: multiplicative
+              note: "Menu price per item. A RATE."
+              children:
+                - id: ppi_rate
+                  label: "Price/item · rate"
+                  measure: price_per_item
+                  relation: rate
+                  segment_dims: [cuisine]
+                  note: "Within-cuisine menu prices moved (pricing)."
+                - id: ppi_mix
+                  label: "Price/item · mix"
+                  measure: price_per_item
+                  relation: mix
+                  segment_dims: [cuisine]
+                  note: "Cuisine mix shifted toward cheaper-per-item cuisines (Simpson)."
+        - id: delivery_fee
+          label: Delivery fee
+          measure: delivery_fee
+          relation: summand
+          note: "Delivery fee per order. DeliveryFee = PayingShare × AvgFee."
+          children:
+            - id: paying_share
+              label: Paying share
+              measure: paying_share
+              relation: multiplicative
+              note: "Share of orders charged a delivery fee. A RATE."
+              children:
+                - id: pay_rate
+                  label: "Paying share · rate"
+                  measure: paying_share
+                  relation: rate
+                  segment_dims: [order_type]
+                  note: "Within-order-type paying share moved (fee policy)."
+                - id: pay_mix
+                  label: "Paying share · mix"
+                  measure: paying_share
+                  relation: mix
+                  segment_dims: [order_type]
+                  note: "Order-type mix shifted toward fee-exempt orders (Simpson)."
+            - id: avg_fee
+              label: Avg fee
+              measure: avg_fee
+              relation: multiplicative
+              note: "Average fee among paying orders. A RATE."
+              children:
+                - id: fee_rate
+                  label: "Avg fee · rate"
+                  measure: avg_fee
+                  relation: rate
+                  segment_dims: [order_type]
+                  note: "Within-order-type fee level moved (pricing)."
+                - id: fee_mix
+                  label: "Avg fee · mix"
+                  measure: avg_fee
+                  relation: mix
+                  segment_dims: [order_type]
+                  note: "Order-type mix shifted the average fee (Simpson)."
+        - id: service_fee
+          label: Service fee
+          measure: service_fee
+          relation: summand
+          note: "Service fee per order."
+        - id: small_order_fee
+          label: Small-order fee
+          measure: small_order_fee
+          relation: summand
+          note: "Small-order surcharge per order."
+        - id: discount
+          label: Discount
+          measure: discount
+          relation: summand
+          sign: -1
+          note: "Promo discount per order (reduces AOV). Discount = PromoPenetration × AvgDiscount."
+          children:
+            - id: promo_penetration
+              label: Promo penetration
+              measure: promo_penetration
+              relation: multiplicative
+              note: "Share of orders with a promo. A RATE — can rise from cuisine MIX, not deeper discounting."
+              children:
+                - id: promo_rate
+                  label: "Promo penetration · rate"
+                  measure: promo_penetration
+                  relation: rate
+                  segment_dims: [cuisine]
+                  note: "Within-cuisine promo share actually rose (more aggressive promos)."
+                - id: promo_mix
+                  label: "Promo penetration · mix"
+                  measure: promo_penetration
+                  relation: mix
+                  segment_dims: [cuisine]
+                  note: "Order mix shifted toward high-promo cuisines — penetration rose from MIX, not deeper promos (Simpson)."
+            - id: avg_discount
+              label: Avg discount
+              measure: avg_discount
+              relation: multiplicative
+              note: "Average discount among promo orders. A RATE."
+              children:
+                - id: disc_rate
+                  label: "Avg discount · rate"
+                  measure: avg_discount
+                  relation: rate
+                  segment_dims: [cuisine]
+                  note: "Within-cuisine promo depth moved."
+                - id: disc_mix
+                  label: "Avg discount · mix"
+                  measure: avg_discount
+                  relation: mix
+                  segment_dims: [cuisine]
+                  note: "Cuisine mix shifted toward deeper-discount cuisines (Simpson)."

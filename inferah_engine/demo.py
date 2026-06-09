@@ -9,7 +9,8 @@ case where the driver is off-tree and the engine honestly ABSTAINS.
 """
 from . import investigate, render, narrate, SyntheticSource, GMV_TREE, GMV_MEASURES
 from .loader import load_pack
-from .synthetic import make_orders, make_visits, make_orders_unmapped
+from .synthetic import (make_orders, make_visits, make_orders_unmapped,
+                        make_foodtech_deep, make_foodtech_offtree)
 
 
 def _section(title, res, label):
@@ -32,6 +33,16 @@ def main():
 
     _section("GMV pack — driver is off-tree: the engine ABSTAINS",
              investigate(SyntheticSource(make_orders_unmapped(), GMV_MEASURES), GMV_TREE),
+             "GMV")
+
+    deep = load_pack("trees/gmv_foodtech_deep.yaml")
+    _section("DEEP pack — full GMV = MAU × OrderConv × Frequency × AOV tree, "
+             "Simpson MIX to the promo-penetration leaf",
+             investigate(SyntheticSource(make_foodtech_deep(), deep.measures), deep.tree),
+             "GMV")
+
+    _section("DEEP pack — drop hides in NULL-city rows: the engine ABSTAINS",
+             investigate(SyntheticSource(make_foodtech_offtree(), deep.measures), deep.tree),
              "GMV")
 
 

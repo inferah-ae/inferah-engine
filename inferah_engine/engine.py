@@ -22,7 +22,8 @@ is not in this loop; narration is a fixed template over verified numbers.
 from __future__ import annotations
 from dataclasses import dataclass, field
 
-from .decompose import lmdi_factors, segment_additive, mix_shift, reconcile
+from .decompose import (lmdi_factors, segment_additive, composition_additive,
+                        mix_shift, reconcile)
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,23 @@ def investigate(src, tree, p0="0", p1="1", filters=None, *, params: Params = Par
             node = next(ch for ch in mult if ch.id == winner)
             continue
 
+        # ---- AXIS C: additive composition (signed summand children) ----
+        summ = [ch for ch in node.children if ch.relation == "summand"]
+        if summ:
+            terms = {ch.id: (ch.sign,
+                             src.aggregate(p0, ch.measure, filters),
+                             src.aggregate(p1, ch.measure, filters)) for ch in summ}
+            parts = composition_additive(terms)
+            rec = reconcile(local_delta, parts, params.recon_tol_pct)
+            worst_recon = max(worst_recon, rec.residual_pct)
+            winner = max(parts, key=lambda k: abs(parts[k]))
+            share = abs(parts[winner] / local_delta) if local_delta else 0.0
+            signed = " ".join(("−" if ch.sign < 0 else "+") + ch.label for ch in summ)
+            res.steps.append(Step("compose", f"{scope} · {signed}", node.measure,
+                                  parts, rec, winner, share))
+            node = next(ch for ch in summ if ch.id == winner)
+            continue
+
         # ---- RATE vs MIX (ratio measure with rate+mix children) ----
         rate_mix = [ch for ch in node.children if ch.relation in ("rate", "mix")]
         if rate_mix and m.kind == "ratio":
@@ -186,7 +204,8 @@ def render(res: Result, metric_label="GMV") -> str:
         out.append("  " + res.leaf); return "\n".join(out)
     out.append("-" * 64)
     for i, s in enumerate(res.steps, 1):
-        tag = {"factor": "FACTOR", "segment": "WHERE ", "mix": "RATE/MIX"}[s.kind]
+        tag = {"factor": "FACTOR", "segment": "WHERE ", "compose": "COMPOSE",
+               "mix": "RATE/MIX"}[s.kind]
         flag = "OK " if s.recon.ok else f"FAIL {s.recon.residual_pct:.1f}%"
         out.append(f"[{i}] {tag} | {s.scope}   [Δ{s.measure}]   reconcile:{flag}")
         for k, v in sorted(s.parts.items(), key=lambda kv: -abs(kv[1])):

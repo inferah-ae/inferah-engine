@@ -36,6 +36,21 @@ def lmdi_factors(m0, m1, factors: dict):
     return out
 
 
+def composition_additive(terms: dict):
+    r"""
+    Additive COMPOSITION of a measure from named child measures, each with a sign:
+
+        M = Σ_i sign_i · C_i        (e.g. AOV = Food + Fees − Discount)
+
+    Identity is exact, so ΔM = Σ_i sign_i · ΔC_i reconciles with zero residual.
+
+        terms : {child_id: (sign, c0, c1)}   per-period value of each child measure
+
+    Returns dict {child_id: signed_contribution_to_delta}.
+    """
+    return {cid: sign * (c1 - c0) for cid, (sign, c0, c1) in terms.items()}
+
+
 def segment_additive(seg0: dict, seg1: dict):
     """
     Additive metric split across a dimension (e.g. GMV by country):

@@ -44,6 +44,8 @@ class SyntheticSource:
             return float(num / den) if den else 0.0
         d = self._slice(period, filters)
         if m.kind == "count":
+            if m.distinct:
+                return float(d[m.column].nunique())
             return float(len(d))
         if m.kind == "sum":
             return float(d[m.column].sum())
@@ -57,7 +59,7 @@ class SyntheticSource:
         m = self.measures[measure]
         d = self._slice(period, filters)
         if m.kind == "count":
-            g = d.groupby(dim).size()
+            g = d.groupby(dim)[m.column].nunique() if m.distinct else d.groupby(dim).size()
             return {k: float(v) for k, v in g.items()}
         if m.kind == "sum":
             g = d.groupby(dim)[m.column].sum()
@@ -117,7 +119,8 @@ class PostgresSource:
             return float(num / den) if den else 0.0
         w = self._where(period, filters)
         if m.kind == "count":
-            return self._scalar(f"SELECT COUNT(*) v FROM {self.base_view} WHERE {w}")
+            expr = f"COUNT(DISTINCT {m.column})" if m.distinct else "COUNT(*)"
+            return self._scalar(f"SELECT {expr} v FROM {self.base_view} WHERE {w}")
         if m.kind == "sum":
             return self._scalar(
                 f"SELECT COALESCE(SUM({m.column}),0) v FROM {self.base_view} WHERE {w}")
@@ -127,7 +130,7 @@ class PostgresSource:
         m = self.measures[measure]
         w = self._where(period, filters)
         if m.kind == "count":
-            expr = "COUNT(*)"
+            expr = f"COUNT(DISTINCT {m.column})" if m.distinct else "COUNT(*)"
         elif m.kind == "sum":
             expr = f"COALESCE(SUM({m.column}),0)"
         else:

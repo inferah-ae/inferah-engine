@@ -124,10 +124,48 @@ res = investigate(SyntheticSource(df, pack.measures), pack.tree)
   (`GMV = orders × AOV`, AOV split rate vs mix).
 - [`trees/acquisition.yaml`](trees/acquisition.yaml) — a second domain
   (`subscriptions = paywall_visits × conversion`, conversion split rate vs mix).
+- [`trees/gmv_foodtech_deep.yaml`](trees/gmv_foodtech_deep.yaml) — a **deep** food-delivery
+  pack exercising every primitive (see below).
 
 Both packs run through the identical engine; a test asserts the YAML parses to the same
 objects as the Python constants in `tree.py` so they can't drift. The food-delivery example
 is exactly that — **an included example, not the product.**
+
+### The deep pack: one identity, all four primitives
+
+[`trees/gmv_foodtech_deep.yaml`](trees/gmv_foodtech_deep.yaml) is the full master identity,
+all algebra, no drivers:
+
+```
+GMV = MAU × OrderConv × Frequency × AOV
+  MAU = New + Resurrected + Retained                       (signed additive)
+    New      = Installs × FirstOrderConv
+    Retained = PrevActives × RetentionRate
+  AOV = Food + DeliveryFee + ServiceFee + SmallOrderFee − Discount   (signed additive)
+    Food     = ItemsPerOrder × PricePerItem
+    Discount = PromoPenetration × AvgDiscount
+```
+
+The bundled order-grain scenario (`make_foodtech_deep`) is a textbook **Simpson trap**: GMV
+falls ~3.9% with orders flat, and the engine walks the identity end to end —
+
+```
+WHERE  → city=Metro (100% of the move; Harbor flat)
+FACTOR → AOV (MAU, OrderConv, Frequency all flat)
+COMPOSE→ −Discount (Food/Delivery/Service/Small unchanged)
+FACTOR → PromoPenetration (AvgDiscount flat: promos never got deeper)
+RATE/MIX by cuisine → MIX wins: within-cuisine promo rates never moved; penetration
+         rose only because the order mix shifted toward a high-promo cuisine.
+```
+
+Every step reconciles exactly, so it lands on the promo-penetration **MIX** leaf with HIGH
+confidence — not "promos got more aggressive." A second scenario (`make_foodtech_offtree`)
+hides the whole drop in NULL-city rows the WHERE axis can't see, and the engine **abstains**.
+
+Supporting this pack meant generalizing the engine twice (no GMV hardcoding): a **signed
+additive composition** node (`M = Σ ±child`, e.g. AOV's `− Discount`) and **count-distinct**
+measures (`MAU = COUNT(DISTINCT user_id)`, intensive — never dim-split). Both are driven off
+the registry and covered by tests.
 
 ## Built on
 

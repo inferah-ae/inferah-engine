@@ -18,9 +18,10 @@ class Node:
     id: str
     label: str
     measure: str                      # a name in the pack's measure registry
-    relation: str = "root"            # root | multiplicative | rate | mix
+    relation: str = "root"            # root | multiplicative | summand | rate | mix
     children: list = field(default_factory=list)
     segment_dims: list = field(default_factory=list)   # axis-B dims to test, e.g. ["country"]
+    sign: int = 1                     # for summand children: +1 (adds) or -1 (subtracts)
     note: str = ""                    # human hint, read by the narrator only
 
 
